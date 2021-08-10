@@ -1,0 +1,198 @@
+---
+title: "Weather Data Analysis"
+author: "Lucas Falcão Monteiro"
+date: "10/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Analyzing harmful weather events
+
+## Synopsis
+The National Oceanic & Atmospheric Administration publishes data regarding weather-related events and their impacts on the health of the population and the economy. This project aims to analyze the data and identify which types of events pose the greatest threat to the USA. These events were then inspected more closely to provide a better description of how they may impact the lives and the economy of Americans.
+
+## Loading and processing Raw Data
+The data is available from the [National Oceanic & Atmospheric Administration website](https://www.noaa.gov/). The data was compiled by the instructors from the Reproducible Research course from Coursera and made available in the following [link](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). We unzip and read the data into the variable **noaa**.
+```{r cache=TRUE}
+noaa <- read.csv('repdata_data_StormData.csv.bz2')
+```
+
+Our analysis will focus on the health and economic effects of different types of weather events. Therefore, we keep only the columns that reference that information: *EVTYPE* (type of event), *Fatalities* and *Injuries* (effects over population health), *PROPDMG* and *PROPDMGEXP* (property damage estimates, including the order of magnitude) and *CROPDMG* and *CROPDMGEXP* (crop damage estimates, including magnitude).
+
+```{r cache=TRUE}
+noaa <- noaa[,c('EVTYPE','FATALITIES','INJURIES','PROPDMG','PROPDMGEXP','CROPDMG','CROPDMGEXP')]
+#Adding an index row
+index <- c(1:nrow(noaa))
+noaa$INDEX <- index
+```
+
+We can rectify the damage columns including the thousands, millions or billions orders of magnitude and delete those columns. The characters 'K', 'M' and 'B' represent thousands, millions or billions of dollars worth of property or crops. The entries with incorrect characters had the damage set to NA.
+
+```{r cache=TRUE}
+noaakp <- noaa[noaa$PROPDMGEXP=='K',]
+noaakp <- rbind(noaakp,noaa[noaa$PROPDMGEXP=='k',])
+noaakp$PROPDMG <- as.numeric(noaakp$PROPDMG) * 1000
+noaamp <- noaa[noaa$PROPDMGEXP=='M',]
+noaamp <- rbind(noaamp,noaa[noaa$PROPDMGEXP=='m',])
+noaamp$PROPDMG <- as.numeric(noaamp$PROPDMG) * 1000000
+noaabp <- noaa[noaa$PROPDMGEXP=='B',]
+noaabp <- rbind(noaabp,noaa[noaa$PROPDMGEXP=='b',])
+noaabp$PROPDMG <- as.numeric(noaabp$PROPDMG) * 1000000000
+noaaop <- noaa[!(noaa$PROPDMGEXP %in% c('K','k','M','m','B','b')),]
+noaaop$PROPDMG <- NA
+noaa1 <- rbind(noaakp,noaamp,noaabp,noaaop)
+
+noaakp <- noaa[noaa1$CROPDMGEXP=='K',]
+noaakp <- rbind(noaakp,noaa[noaa1$CROPDMGEXP=='k',])
+noaakp$CROPDMG <- as.numeric(noaakp$CROPDMG) * 1000
+noaamp <- noaa[noaa$CROPDMGEXP=='M',]
+noaamp <- rbind(noaamp,noaa[noaa$CROPDMGEXP=='m',])
+noaamp$CROPDMG <- as.numeric(noaamp$CROPDMG) * 1000000
+noaabp <- noaa1[noaa$CROPDMGEXP=='B',]
+noaabp <- rbind(noaabp,noaa[noaa$CROPDMGEXP=='b',])
+noaabp$CROPDMG <- as.numeric(noaabp$CROPDMG) * 1000000000
+noaaop <- noaa[!(noaa$CROPDMGEXP %in% c('K','k','M','m','B','b')),]
+noaaop$PROPDMG <- NA
+noaa2 <- rbind(noaakp,noaamp,noaabp,noaaop)
+
+noaa <- merge(noaa1,noaa2,by='INDEX')
+noaa <- cbind(noaa$EVTYPE.x,noaa$FATALITIES.x,noaa$INJURIES.x,noaa$PROPDMG.x,noaa$CROPDMG.y)
+colnames(noaa) <- c('EVTYPE','FATALITIES','INJURIES','PROPDMG','CROPDMG')
+noaa <- data.frame(noaa)
+noaa$EVTYPE <- toupper(noaa$EVTYPE)
+noaa$FATALITIES <- as.numeric(noaa$FATALITIES)
+noaa$INJURIES <- as.numeric(noaa$INJURIES)
+noaa$PROPDMG <- as.numeric(noaa$PROPDMG)
+noaa$CROPDMG <- as.numeric(noaa$CROPDMG)
+```
+
+Finally, we want to filter occurrences where we have at least 10 events under the same category. This will get rid of entries that are not very representative.
+
+```{r}
+entries <- table(noaa$EVTYPE)
+entries <- entries[entries>=10]
+noaa <- noaa[noaa$EVTYPE %in% names(entries),]
+```
+
+
+## Results
+### Identifying the most harmful events
+The mean number of fatalities may be calculated from the table.
+
+```{r}
+rank <- aggregate(noaa$FATALITIES,by=list(noaa$EVTYPE),mean,na.rm=TRUE)
+colnames(rank) <- c('EVTYPE','Avg.Fatality')
+rank <- rank[order(rank$Avg.Fatality,decreasing=TRUE),]
+head(rank,10)
+```
+
+
+ We can mean repeat this treatment with respect to injuries.
+ 
+```{r}
+rank <- aggregate(noaa$INJURIES,by=list(noaa$EVTYPE),mean,na.rm=TRUE)
+colnames(rank) <- c('EVTYPE','Avg.Injury')
+rank <- rank[order(rank$Avg.Injury,decreasing=TRUE),]
+head(rank,10)
+```
+ 
+ With regard to  economic impacts, we can analyze the effect over property and crops.
+ 
+```{r}
+rank <- aggregate(noaa$PROPDMG,by=list(noaa$EVTYPE),mean,na.rm=TRUE)
+colnames(rank) <- c('EVTYPE','Avg.Property.Damage')
+rank <- rank[order(rank$Avg.Property.Damage,decreasing=TRUE),]
+head(rank,10)
+```
+ 
+```{r}
+rank <- aggregate(noaa$CROPDMG,by=list(noaa$EVTYPE),mean,na.rm=TRUE)
+colnames(rank) <- c('EVTYPE','Avg.Crop.Damage')
+rank <- rank[order(rank$Avg.Crop.Damage,decreasing=TRUE),]
+head(rank,10)
+```
+
+We can conclude that the three most dangerous events for public health and the economy are:
+* Hurricanes and typhoons, ranking consistently high on all types of damage;
+* Extreme heat, droughts or wildfires, ranking high among casualties and injuries, and also causing losses to agriculture;
+* Extreme cold, including freezes and snow, which are also top ranking among casualties and injuries, and crop damages.
+
+### Summarizing the data for these events
+We can gather the events that appeared on the tables below under the same category to simplify the analysis.
+```{r}
+noaa[(noaa$EVTYPE=='HURRICANE ERIN'|noaa$EVTYPE=='HURRICANE OPAL'|noaa$EVTYPE=='HURRICANE'|noaa$EVTYPE=='TYPHOON'),'EVTYPE'] <- 'HURRICANE/TYPHOON'
+noaa[(noaa$EVTYPE=='EXTREME HEAT'|noaa$EVTYPE=='HEAT WAVE'|noaa$EVTYPE=='EXCESSIVE HEAT'|noaa$EVTYPE=='UNSEASONABLY WARM AND DRY'),'EVTYPE'] <- 'HEAT'
+noaa[(noaa$EVTYPE=='HYPOTHERMIA/EXPOSURE'|noaa$EVTYPE=='LOW TEMPERATURE'|noaa$EVTYPE=='RAIN/SNOW'|noaa$EVTYPE=='WINTER WEATHER MIX'||noaa$EVTYPE=='GLAZE'|noaa$EVTYPE=='MIXED PRECIP'|noaa$EVTYPE=='ICE'),'EVTYPE'] <- 'COLD'
+noaa[(noaa$EVTYPE=='DAMAGING FREEZE'|noaa$EVTYPE=='FROST/FREEZE'|noaa$EVTYPE=='AGRICULTURAL FREEZE'|noaa$EVTYPE=='FREEZE'),'EVTYPE'] <- 'FROST/FREEZE'
+```
+
+
+
+The 5-number summary (including the mean) for Hurricane/Typhoons is included below:
+```{r}
+summary(noaa[noaa$EVTYPE=='HURRICANE/TYPHOON',2:5])
+```
+This means most events do not cause casualties. However, there are cases where hundreds of injuries may occur. Additionally, these events almost always cause extensive economic damage, on the order of hundreds of millions of dollars. This is mostly hard to prevent due to the nature of Hurricanes.
+
+Regarding excessive heat events:
+```{r}
+summary(noaa[noaa$EVTYPE=='HEAT',2:5])
+```
+```{r}
+summary(noaa[noaa$EVTYPE=='WILDFIRES',2:5])
+```
+```{r}
+summary(noaa[noaa$EVTYPE=='DROUGHT',2:5])
+```
+
+These are apparently events that occur more frequently, and mostly causes no noticeable damage, with the exception of wildfires.
+Extreme versions of heat waves may be devastating, though.Hundreds of people may die and hundred million dollars may be lost from a single event.
+
+
+Regarding excessive cold events:
+```{r}
+summary(noaa[noaa$EVTYPE=='COLD',2:5])
+```
+```{r}
+summary(noaa[noaa$EVTYPE=='FROST/FREEZE',2:5])
+```
+
+In comparison to the previous categories, these events seem less deadly, but they still pose great economic threats.
+
+### Visualizing the data
+Excluding the events where there was no damage, we can plot histograms to visualize the distribution of data.
+
+```{r}
+par(mfrow=c(2,2),oma=c(0,0,2,0))
+hist(noaa[(noaa$EVTYPE=='HURRICANE/TYPHOON')& (noaa$FATALITIES!=0),'FATALITIES'],main='',xlab='Fatalities')
+hist(noaa[(noaa$EVTYPE=='HURRICANE/TYPHOON')& (noaa$INJURIES!=0),'INJURIES'],main='',xlab='Injuries')
+hist(log10(noaa[(noaa$EVTYPE=='HURRICANE/TYPHOON')& (noaa$PROPDMG!=0),'PROPDMG']),main='',xlab='Log10 of Property Damage ($)')
+hist(log10(noaa[(noaa$EVTYPE=='HURRICANE/TYPHOON')& (noaa$CROPDMG!=0),'CROPDMG']),main='',xlab='Log10 of Crop Damage ($)')
+mtext('Hurricane/Typhoon summary',outer=TRUE,cex=1.5)
+```
+
+```{r}
+par(mfrow=c(2,2),oma=c(0,0,2,0))
+hist(noaa[(noaa$EVTYPE=='HEAT')& (noaa$FATALITIES!=0),'FATALITIES'],main='Excessive Heat',xlab='Fatalities')
+hist(noaa[(noaa$EVTYPE=='HEAT')& (noaa$INJURIES!=0),'INJURIES'],main='Excessive Heat',xlab='Injuries')
+hist(log10(noaa[(noaa$EVTYPE=='WILDFIRES')& (noaa$PROPDMG!=0),'PROPDMG']),main='Wildfires',xlab='Log10 of Property Damage ($)')
+hist(log10(noaa[(noaa$EVTYPE=='DROUGHT')& (noaa$CROPDMG!=0),'CROPDMG']),main='Drought',xlab='Log 10 of Crop Damage ($)')
+mtext('Excessive heat events summary',outer=TRUE,cex=1.5)
+```
+
+```{r}
+par(mfrow=c(2,2),oma=c(0,0,2,0))
+hist(noaa[(noaa$EVTYPE=='COLD')& (noaa$FATALITIES!=0),'FATALITIES'],main='Excessive Cold',xlab='Fatalities')
+hist(noaa[(noaa$EVTYPE=='COLD')& (noaa$INJURIES!=0),'INJURIES'],main='Excessive Cold',xlab='Injuries')
+hist(log10(noaa[(noaa$EVTYPE=='COLD')& (noaa$PROPDMG!=0),'PROPDMG']),main='Excessive Cold',xlab='Log10 of Property Damage ($)')
+hist(log10(noaa[(noaa$EVTYPE=='FROST/FREEZE')& (noaa$CROPDMG!=0),'CROPDMG']),main='Frost/Freeze',xlab='Log 10 of Crop Damage ($)')
+mtext('Excessive cold events summary',outer=TRUE,cex=1.5)
+```
+
+## Discussion
+The data has informed us that hurricanes/typhoons cause extensive property damage, usually from hundred thousand dollars to a billion dollars, and not only must they be tracked and forecast, but also there must be governmental incentives to research focusing on damage reduction. Hurricanes are also even more malicious because they occur in areas with agricultural crops, causing even more economic danger and threatening food supply.
+
+Extreme weather such as intensive heat or cold are also a threat. The data suggests most of these events cause no damage, but the more acute versions have devastating potential, as seen in 2021 in Canada with hundreds of deaths due to a heat wave, or the death of millions of sea animals in the Pacific coast of the USA. These events are becoming increasingly common due to global warming and is imperative that the countries unite to fight it.
